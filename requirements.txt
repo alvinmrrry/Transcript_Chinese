@@ -3,4 +3,4 @@ yt_dlp
 pydub
 groq
 audiofile
-moivepy
+ffmpeg-python
