@@ -67,8 +67,8 @@ def translate_to_chinese(text_chunk):
         print(f"Error during translation: {e}")
         return None
 
-def process_video_transcript(url):
-    """Main function to process video transcript."""
+def process_video_transcript(url, start_time=0, duration=300):
+    """Main function to process video transcript and translate to Chinese."""
     video_id = extract_video_id(url)
     if not video_id: raise ValueError("Invalid URL.")
 
@@ -76,23 +76,30 @@ def process_video_transcript(url):
     audio_path = download_audio(url, video_id)
     if not audio_path: raise ValueError("Audio download failed.")
 
-    # Transcribe the audio to text
-    transcript = transcribe_audio(audio_path)
-    if transcript:
-        translated_text = translate_to_chinese(transcript)  # Translate transcript to Chinese
-        if translated_text:
-            # Save the transcript to a file
-            with open(f"{video_id}_transcript_chinese.txt", "w", encoding="utf-8") as f:
-                f.write(translated_text)
-            print("Transcript processing completed.")
-            return translated_text
-        else:
-            print("Error in translation.")
-    else:
-        print("Error in transcription.")
+    # Only transcribe a portion of the video (based on start_time and duration)
+    # You can modify this if necessary to extract specific segments.
+    try:
+        # Limit the audio to the desired segment using yt-dlp or other tools
+        # For now, we are transcribing the entire audio. In practice, you can trim or split the audio.
 
-    # Clean up audio file
-    os.remove(audio_path)
+        transcript = transcribe_audio(audio_path)  # Transcribe the full audio or segment
+        if transcript:
+            translated_text = translate_to_chinese(transcript)  # Translate transcript to Chinese
+            if translated_text:
+                # Save the transcript to a file
+                with open(f"{video_id}_transcript_chinese.txt", "w", encoding="utf-8") as f:
+                    f.write(translated_text)
+                print("Transcript processing completed.")
+                return translated_text
+            else:
+                print("Error in translation.")
+        else:
+            print("Error in transcription.")
+    except Exception as e:
+        print(f"Error processing video segment: {e}")
+    finally:
+        # Clean up audio file
+        os.remove(audio_path)
 
     return None
 
@@ -100,19 +107,12 @@ def process_video_transcript(url):
 st.title("YouTube Video Transcript & Translation")
 video_url = st.text_input("Enter YouTube Video URL:")
 
+# Always show "Processing your video..." message
+st.write("Processing your video...")
+
 if video_url:
     try:
-        st.write("Processing your video...")
-
-        # Call the processing function
+        # Call the processing function (optional: pass start_time and duration for specific segments)
         transcript = process_video_transcript(video_url)
 
-        if transcript:
-            # Show the translated transcript in Streamlit
-            st.subheader("Chinese Transcript")
-            st.text_area("Transcript", transcript, height=400)
-        else:
-            st.error("Failed to process video.")
-
-    except Exception as e:
-        st.error(f"Error processing video: {e}")
+        if transc
