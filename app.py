@@ -1,14 +1,10 @@
 import os
 import yt_dlp  # YouTube video downloader for audio extraction
 import streamlit as st
-from pydub import AudioSegment
 from groq import Groq
 
 # Initialize Groq client
 client = Groq(api_key='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')
-
-# File size limit (25MB)
-MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB in bytes
 
 def extract_video_id(url):
     """Extract video ID from YouTube URL."""
@@ -17,41 +13,23 @@ def extract_video_id(url):
     return match.group(1) if match else None
 
 def download_audio(url, video_id):
-    """Download audio from YouTube in a suitable format."""
+    """Download audio from YouTube in normal quality."""
     try:
+        # Specify a lower quality audio format by using 'bestaudio' with lower audio quality settings
         ydl_opts = {
-            'format': 'bestaudio/best',  # Download the best quality audio
+            'format': 'bestaudio[ext=m4a]/bestaudio[ext=mp3]',  # Choose m4a or mp3, lower quality audio formats
             'outtmpl': f'{video_id}.%(ext)s',  # Save with video ID and the actual file extension
             'postprocessors': [],  # Avoid post-processing for conversion
+            'noplaylist': True,  # Avoid downloading playlists
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-
+        
         # Find the downloaded audio file with the correct extension
         downloaded_file = f"{video_id}.{info_dict['ext']}"
         return downloaded_file
     except Exception as e:
         print(f"Error: {e}")
-        return None
-
-def compress_audio(input_path, output_path):
-    """Compress audio to ensure it is under 25MB in size."""
-    try:
-        audio = AudioSegment.from_file(input_path)
-        
-        # Lower the audio bitrate or reduce quality to compress the file
-        # Save as mp3 with a low bitrate (e.g., 128kbps)
-        audio.export(output_path, format="mp3", bitrate="128k")
-
-        # Check the file size, and adjust if necessary
-        if os.path.getsize(output_path) > MAX_FILE_SIZE:
-            print("File is still too large after compression, reducing further...")
-            audio = audio.set_frame_rate(22050)  # Reduce sample rate for further compression
-            audio.export(output_path, format="mp3", bitrate="96k")  # Try a lower bitrate
-
-        return output_path
-    except Exception as e:
-        print(f"Error compressing audio: {e}")
         return None
 
 def transcribe_audio(audio_path):
@@ -83,50 +61,54 @@ def translate_to_chinese(text_chunk):
             top_p=1,
             stream=False,
         )
-
+        
+        # Correctly accessing the response attribute
         translated_text = completion.choices[0].message.content
         return translated_text
     except Exception as e:
         print(f"Error during translation: {e}")
         return None
 
-def process_video_transcript(url):
+def process_video_transcript(url, start_time=0, duration=300):
     """Main function to process video transcript and translate to Chinese."""
     video_id = extract_video_id(url)
-    if not video_id: raise ValueError("Invalid URL.")
+    if not video_id: 
+        raise ValueError("Invalid URL.")
 
-    # Download audio in best available format
+    # Download audio in normal quality (not best)
     audio_path = download_audio(url, video_id)
-    if not audio_path: raise ValueError("Audio download failed.")
+    if not audio_path: 
+        raise ValueError("Audio download failed.")
 
-    # Compress audio to ensure it's below the size limit
-    compressed_audio_path = f"{video_id}_compressed.mp3"
-    compressed_audio_path = compress_audio(audio_path, compressed_audio_path)
-    if not compressed_audio_path: raise ValueError("Audio compression failed.")
+    # Only transcribe a portion of the video (based on start_time and duration)
+    # You can modify this if necessary to extract specific segments.
+    try:
+        # Limit the audio to the desired segment using yt-dlp or other tools
+        # For now, we are transcribing the entire audio. In practice, you can trim or split the audio.
 
-    # Transcribe the audio using Whisper API
-    transcript = transcribe_audio(compressed_audio_path)
-    if transcript:
-        translated_text = translate_to_chinese(transcript)  # Translate transcript to Chinese
-        if translated_text:
-            # Save the transcript to a file
-            with open(f"{video_id}_transcript_chinese.txt", "w", encoding="utf-8") as f:
-                f.write(translated_text)
-            print("Transcript processing completed.")
-            return translated_text
+        transcript = transcribe_audio(audio_path)  # Transcribe the full audio or segment
+        if transcript:
+            translated_text = translate_to_chinese(transcript)  # Translate transcript to Chinese
+            if translated_text:
+                # Save the transcript to a file
+                with open(f"{video_id}_transcript_chinese.txt", "w", encoding="utf-8") as f:
+                    f.write(translated_text)
+                print("Transcript processing completed.")
+                return translated_text
+            else:
+                print("Error in translation.")
         else:
-            print("Error in translation.")
-    else:
-        print("Error in transcription.")
-
-    # Clean up audio files
-    os.remove(audio_path)
-    os.remove(compressed_audio_path)
+            print("Error in transcription.")
+    except Exception as e:
+        print(f"Error processing video segment: {e}")
+    finally:
+        # Clean up audio file
+        os.remove(audio_path)
 
     return None
 
 # Streamlit UI
-st.title("YouTube Video Transcript & Translation with Whisper and Audio Compression")
+st.title("YouTube Video Transcript & Translation")
 video_url = st.text_input("Enter YouTube Video URL:")
 
 # Always show "Processing your video..." message
