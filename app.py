@@ -13,25 +13,31 @@ def extract_video_id(url):
     return match.group(1) if match else None
 
 def download_audio(url, video_id):
-    """Download audio from YouTube in normal quality."""
+    """Download audio from YouTube in lower quality."""
     try:
-        # Specify a lower quality audio format by using 'bestaudio' with lower audio quality settings
+        # Specify a lower quality audio format by choosing a lower bitrate audio or more compressed codec
         ydl_opts = {
-            'format': 'mp4', 
-            'codec': "aac",
+            'format': 'bestaudio[abr<=128]/mp4',  # Choose audio with bitrate <= 128 kbps, or mp4 audio
             'outtmpl': f'{video_id}.%(ext)s',  # Save with video ID and the actual file extension
             'postprocessors': [],  # Avoid post-processing for conversion
             'noplaylist': True,  # Avoid downloading playlists
+            'extractaudio': True,  # Ensure we only extract audio
+            'audioquality': 1,  # 1 = best quality, 9 = worst quality; 9 is typically lower quality
+            'restrictfilenames': True,  # Prevent unusual characters in filenames
+            'logtostderr': False,  # Disable logging to stderr (optional)
         }
+        
+        # Create a YouTubeDL instance and start the download
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
         
-        # Find the downloaded audio file with the correct extension
+        # Get the downloaded audio file with the appropriate extension
         downloaded_file = f"{video_id}.{info_dict['ext']}"
         return downloaded_file
     except Exception as e:
         print(f"Error: {e}")
         return None
+
 
 def transcribe_audio(audio_path):
     """Transcribe audio using Whisper."""
