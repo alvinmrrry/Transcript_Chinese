@@ -115,4 +115,12 @@ if video_url:
         # Call the processing function (optional: pass start_time and duration for specific segments)
         transcript = process_video_transcript(video_url)
 
-        if transc
+        if transcript:
+            # Show the translated transcript in Streamlit
+            st.subheader("Chinese Transcript")
+            st.text_area("Transcript", transcript, height=1000)
+        else:
+            st.error("Failed to process video.")
+
+    except Exception as e:
+        st.error(f"Error processing video: {e}")
