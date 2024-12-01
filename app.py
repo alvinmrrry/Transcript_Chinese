@@ -1,6 +1,8 @@
 import os
 import yt_dlp  # YouTube video downloader for audio extraction
-import ffmpeg  # To manipulate and compress audio files
+import numpy as np  # To manipulate audio data
+import audioread  # To read audio files
+import soundfile as sf  # To save audio data to files
 import streamlit as st
 from groq import Groq
 
@@ -39,19 +41,36 @@ def download_audio(url, video_id):
         return None
 
 def compress_audio(input_file, output_file, target_size_mb=25):
-    """Compress audio file to a target size (in MB)."""
+    """Compress audio file to a target size (in MB) using audioread and numpy."""
     try:
-        # Estimate target bitrate based on desired size (in MB) and file duration
-        duration = ffmpeg.probe(input_file, v='error', select_streams='a:0', show_entries='format=duration')['format']['duration']
+        # Read the audio file using audioread
+        with audioread.audio_open(input_file) as f:
+            sample_rate = f.samplerate
+            num_channels = f.channels
+            total_samples = int(f.duration * sample_rate)
+            audio_data = np.zeros((total_samples, num_channels), dtype=np.float32)
+
+            # Read audio data into numpy array
+            for i, buf in enumerate(f):
+                audio_data[i * f.block_size:(i + 1) * f.block_size] = np.frombuffer(buf, dtype=np.float32).reshape(-1, num_channels)
+
+        # Calculate the target bitrate (in kbps) based on target file size
+        duration = f.duration
         target_bitrate = (target_size_mb * 8 * 1024) / duration  # Calculate target bitrate in kbps
 
-        # Ensure the bitrate doesn't exceed 128kbps, as we want to avoid excessive quality loss
-        target_bitrate = min(target_bitrate, 128)
+        # Downsample (reduce quality) to achieve the desired bitrate
+        target_sample_rate = int(sample_rate * (target_bitrate / 128))  # Example simplification for bitrate reduction
+        if target_sample_rate < 8000:
+            target_sample_rate = 8000  # Don't go below 8000 Hz
 
-        # Compress the audio using ffmpeg with the target bitrate
-        ffmpeg.input(input_file).output(output_file, audio_bitrate=f'{int(target_bitrate)}k').run()
+        # Resample the audio data
+        from scipy.signal import resample
+        resampled_audio = resample(audio_data, int(audio_data.shape[0] * target_sample_rate / sample_rate))
 
-        # Return the compressed audio file path
+        # Save the resampled audio to a new file
+        sf.write(output_file, resampled_audio, target_sample_rate)
+        
+        print(f"File compressed and saved as {output_file}.")
         return output_file
     except Exception as e:
         print(f"Error compressing audio: {e}")
@@ -104,7 +123,7 @@ def process_video_transcript(url, start_time=0, duration=300):
     if not audio_path: raise ValueError("Audio download failed.")
 
     # Compress the audio to ensure it's under 25MB
-    compressed_audio_path = compress_audio(audio_path, f"{video_id}_compressed.mp3", target_size_mb=25)
+    compressed_audio_path = compress_audio(audio_path, f"{video_id}_compressed.wav", target_size_mb=25)
     if not compressed_audio_path: raise ValueError("Audio compression failed.")
 
     # Transcribe the compressed audio to text
