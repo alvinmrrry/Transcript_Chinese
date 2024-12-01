@@ -67,7 +67,7 @@ def translate_to_chinese(text_chunk):
         print(f"Error during translation: {e}")
         return None
 
-def process_video_transcript(url, start_time=0, duration=300):
+def process_video_transcript(url, start_time=0, duration=600):
     """Main function to process video transcript and translate to Chinese."""
     video_id = extract_video_id(url)
     if not video_id: raise ValueError("Invalid URL.")
