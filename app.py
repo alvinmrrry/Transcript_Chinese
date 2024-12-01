@@ -1,7 +1,6 @@
 import os
 import yt_dlp  # YouTube video downloader for audio extraction
 import streamlit as st
-from pydub import AudioSegment
 from groq import Groq
 
 # Initialize Groq client
@@ -33,6 +32,7 @@ def download_audio(url, video_id):
 
 def split_audio(audio_path, chunk_length_ms=180000):  # 180000 ms = 3 minutes
     """Split audio into chunks of a given length."""
+    # Since ffmpeg is not available, we will use yt-dlp and handle audio directly.
     audio = AudioSegment.from_file(audio_path)
     return [audio[i:i + chunk_length_ms] for i in range(0, len(audio), chunk_length_ms)]
 
