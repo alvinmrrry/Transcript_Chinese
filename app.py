@@ -17,7 +17,7 @@ def download_audio(url, video_id):
     try:
         # Specify a lower quality audio format by using 'bestaudio' with lower audio quality settings
         ydl_opts = {
-            'format': 'bestaudio[ext=m4a]/bestaudio[ext=mp3]',  # Choose m4a or mp3, lower quality audio formats
+            'format': 'bestaudio[ext=mp3]',  # Choose m4a or mp3, lower quality audio formats
             'outtmpl': f'{video_id}.%(ext)s',  # Save with video ID and the actual file extension
             'postprocessors': [],  # Avoid post-processing for conversion
             'noplaylist': True,  # Avoid downloading playlists
