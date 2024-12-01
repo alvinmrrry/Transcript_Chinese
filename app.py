@@ -1,8 +1,7 @@
 import os
-from groq import Groq
 import yt_dlp  # YouTube video downloader for audio extraction
 import streamlit as st
-from pydub import AudioSegment
+from groq import Groq
 
 # Initialize Groq client
 client = Groq(api_key='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')
@@ -16,7 +15,6 @@ def extract_video_id(url):
 def download_audio(url, video_id):
     """Download audio from YouTube in a suitable format."""
     try:
-        # Download audio directly in best quality available
         ydl_opts = {
             'format': 'bestaudio/best',  # Download the best quality audio
             'outtmpl': f'{video_id}.%(ext)s',  # Save with video ID and the actual file extension
@@ -32,21 +30,12 @@ def download_audio(url, video_id):
         print(f"Error: {e}")
         return None
 
-def split_audio(file_path, chunk_length_ms=300000):
-    """Split audio into chunks (default: 5 minutes)."""
+def transcribe_audio(audio_path):
+    """Transcribe audio using Whisper."""
     try:
-        audio = AudioSegment.from_file(file_path)
-        return [audio[i:i + chunk_length_ms] for i in range(0, len(audio), chunk_length_ms)]
-    except Exception as e:
-        print(f"Error splitting audio: {e}")
-        return []
-
-def transcribe_audio(chunk):
-    """Transcribe audio chunk using Whisper."""
-    try:
-        with open(chunk, "rb") as f:
+        with open(audio_path, "rb") as f:
             transcription = client.audio.transcriptions.create(
-                file=(chunk, f.read()), model="whisper-large-v3-turbo")
+                file=(audio_path, f.read()), model="whisper-large-v3-turbo")
         return transcription.text
     except Exception as e:
         print(f"Error transcribing audio: {e}")
@@ -87,30 +76,25 @@ def process_video_transcript(url):
     audio_path = download_audio(url, video_id)
     if not audio_path: raise ValueError("Audio download failed.")
 
-    # Split the audio into smaller chunks
-    chunks = split_audio(audio_path)
-    transcript = ""
-    
-    for i, chunk in enumerate(chunks):
-        chunk_file = f"chunk_{i}.m4a"
-        chunk.export(chunk_file, format="mp4", codec="aac")  # Export chunk as .m4a or .mp3
-        chunk_transcript = transcribe_audio(chunk_file)
-        if chunk_transcript:
-            translated_text = translate_to_chinese(chunk_transcript)  # Translate transcript to Chinese
-            if translated_text:
-                transcript += translated_text + "\n"
-            else:
-                print(f"Failed to translate chunk {chunk_file}.")
-        os.remove(chunk_file)  # Clean up chunk after processing
-    
-    # Write the full transcript to a file
-    with open(f"{video_id}_transcript_chinese.txt", "w", encoding="utf-8") as f:
-        f.write(transcript)
+    # Transcribe the audio to text
+    transcript = transcribe_audio(audio_path)
+    if transcript:
+        translated_text = translate_to_chinese(transcript)  # Translate transcript to Chinese
+        if translated_text:
+            # Save the transcript to a file
+            with open(f"{video_id}_transcript_chinese.txt", "w", encoding="utf-8") as f:
+                f.write(translated_text)
+            print("Transcript processing completed.")
+            return translated_text
+        else:
+            print("Error in translation.")
+    else:
+        print("Error in transcription.")
 
-    os.remove(audio_path)  # Clean up original audio file
-    print("Transcript processing completed.")
+    # Clean up audio file
+    os.remove(audio_path)
 
-    return transcript
+    return None
 
 # Streamlit UI
 st.title("YouTube Video Transcript & Translation")
@@ -123,8 +107,12 @@ if video_url:
         # Call the processing function
         transcript = process_video_transcript(video_url)
 
-        # Show the translated transcript in Streamlit
-        st.subheader("Chinese Transcript")
-        st.text_area("Transcript", transcript, height=400)
+        if transcript:
+            # Show the translated transcript in Streamlit
+            st.subheader("Chinese Transcript")
+            st.text_area("Transcript", transcript, height=400)
+        else:
+            st.error("Failed to process video.")
+
     except Exception as e:
         st.error(f"Error processing video: {e}")
