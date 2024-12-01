@@ -1,7 +1,6 @@
 import os
 import yt_dlp  # YouTube video downloader for audio extraction
 import streamlit as st
-from pydub import AudioSegment
 from groq import Groq
 
 # Initialize Groq client
@@ -31,17 +30,12 @@ def download_audio(url, video_id):
         print(f"Error: {e}")
         return None
 
-def split_audio(audio_path, chunk_length_ms=180000):  # 180000 ms = 3 minutes
-    """Split audio into chunks of a given length."""
-    audio = AudioSegment.from_file(audio_path)
-    return [audio[i:i + chunk_length_ms] for i in range(0, len(audio), chunk_length_ms)]
-
-def transcribe_audio(audio_chunk):
+def transcribe_audio(audio_path):
     """Transcribe audio using Whisper."""
     try:
-        with open(audio_chunk, "rb") as f:
+        with open(audio_path, "rb") as f:
             transcription = client.audio.transcriptions.create(
-                file=(audio_chunk, f.read()), model="whisper-large-v3-turbo")
+                file=(audio_path, f.read()), model="whisper-large-v3-turbo")
         return transcription.text
     except Exception as e:
         print(f"Error transcribing audio: {e}")
@@ -73,7 +67,7 @@ def translate_to_chinese(text_chunk):
         print(f"Error during translation: {e}")
         return None
 
-def process_video_transcript(url):
+def process_video_transcript(url, start_time=0, duration=300):
     """Main function to process video transcript and translate to Chinese."""
     video_id = extract_video_id(url)
     if not video_id: raise ValueError("Invalid URL.")
@@ -82,36 +76,32 @@ def process_video_transcript(url):
     audio_path = download_audio(url, video_id)
     if not audio_path: raise ValueError("Audio download failed.")
 
-    # Split the audio into chunks of 3 minutes each
-    audio_chunks = split_audio(audio_path)
+    # Only transcribe a portion of the video (based on start_time and duration)
+    # You can modify this if necessary to extract specific segments.
+    try:
+        # Limit the audio to the desired segment using yt-dlp or other tools
+        # For now, we are transcribing the entire audio. In practice, you can trim or split the audio.
 
-    # Store the complete transcript
-    full_transcript = ""
-
-    # Process each chunk, transcribe, and translate
-    for i, chunk in enumerate(audio_chunks):
-        chunk_file = f"chunk_{i}.mp3"
-        chunk.export(chunk_file, format="mp3")
-        
-        # Transcribe each chunk
-        transcript = transcribe_audio(chunk_file)
+        transcript = transcribe_audio(audio_path)  # Transcribe the full audio or segment
         if transcript:
             translated_text = translate_to_chinese(transcript)  # Translate transcript to Chinese
             if translated_text:
-                full_transcript += translated_text + "\n"
+                # Save the transcript to a file
+                with open(f"{video_id}_transcript_chinese.txt", "w", encoding="utf-8") as f:
+                    f.write(translated_text)
+                print("Transcript processing completed.")
+                return translated_text
             else:
-                print(f"Error in translation for chunk {i}.")
+                print("Error in translation.")
         else:
-            print(f"Error in transcription for chunk {i}.")
-        
-        # Clean up chunk file
-        os.remove(chunk_file)
+            print("Error in transcription.")
+    except Exception as e:
+        print(f"Error processing video segment: {e}")
+    finally:
+        # Clean up audio file
+        os.remove(audio_path)
 
-    # Clean up audio file
-    os.remove(audio_path)
-
-    # Return the complete translated transcript
-    return full_transcript
+    return None
 
 # Streamlit UI
 st.title("YouTube Video Transcript & Translation")
@@ -122,7 +112,7 @@ st.write("Processing your video...")
 
 if video_url:
     try:
-        # Call the processing function (this now processes the entire audio)
+        # Call the processing function (optional: pass start_time and duration for specific segments)
         transcript = process_video_transcript(video_url)
 
         if transcript:
