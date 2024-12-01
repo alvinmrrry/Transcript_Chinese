@@ -1,6 +1,7 @@
 import os
 import yt_dlp  # YouTube video downloader for audio extraction
 import streamlit as st
+from pydub import AudioSegment
 from groq import Groq
 
 # Initialize Groq client
@@ -30,12 +31,17 @@ def download_audio(url, video_id):
         print(f"Error: {e}")
         return None
 
-def transcribe_audio(audio_path):
+def split_audio(audio_path, chunk_length_ms=180000):  # 180000 ms = 3 minutes
+    """Split audio into chunks of a given length."""
+    audio = AudioSegment.from_file(audio_path)
+    return [audio[i:i + chunk_length_ms] for i in range(0, len(audio), chunk_length_ms)]
+
+def transcribe_audio(audio_chunk):
     """Transcribe audio using Whisper."""
     try:
-        with open(audio_path, "rb") as f:
+        with open(audio_chunk, "rb") as f:
             transcription = client.audio.transcriptions.create(
-                file=(audio_path, f.read()), model="whisper-large-v3-turbo")
+                file=(audio_chunk, f.read()), model="whisper-large-v3-turbo")
         return transcription.text
     except Exception as e:
         print(f"Error transcribing audio: {e}")
@@ -76,28 +82,36 @@ def process_video_transcript(url):
     audio_path = download_audio(url, video_id)
     if not audio_path: raise ValueError("Audio download failed.")
 
-    # Transcribe the full audio
-    try:
-        transcript = transcribe_audio(audio_path)  # Transcribe the entire audio
+    # Split the audio into chunks of 3 minutes each
+    audio_chunks = split_audio(audio_path)
+
+    # Store the complete transcript
+    full_transcript = ""
+
+    # Process each chunk, transcribe, and translate
+    for i, chunk in enumerate(audio_chunks):
+        chunk_file = f"chunk_{i}.mp3"
+        chunk.export(chunk_file, format="mp3")
+        
+        # Transcribe each chunk
+        transcript = transcribe_audio(chunk_file)
         if transcript:
             translated_text = translate_to_chinese(transcript)  # Translate transcript to Chinese
             if translated_text:
-                # Save the transcript to a file
-                with open(f"{video_id}_transcript_chinese.txt", "w", encoding="utf-8") as f:
-                    f.write(translated_text)
-                print("Transcript processing completed.")
-                return translated_text
+                full_transcript += translated_text + "\n"
             else:
-                print("Error in translation.")
+                print(f"Error in translation for chunk {i}.")
         else:
-            print("Error in transcription.")
-    except Exception as e:
-        print(f"Error processing video: {e}")
-    finally:
-        # Clean up audio file
-        os.remove(audio_path)
+            print(f"Error in transcription for chunk {i}.")
+        
+        # Clean up chunk file
+        os.remove(chunk_file)
 
-    return None
+    # Clean up audio file
+    os.remove(audio_path)
+
+    # Return the complete translated transcript
+    return full_transcript
 
 # Streamlit UI
 st.title("YouTube Video Transcript & Translation")
