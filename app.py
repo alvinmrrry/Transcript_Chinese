@@ -102,6 +102,7 @@ video_url = st.text_input("Enter YouTube Video URL:")
 
 if video_url:
     try:
+        st.video(f"{video_url}_result.mp4") 
         st.write("Processing your video...")
 
         # Call the processing function
