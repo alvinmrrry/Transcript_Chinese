@@ -4,3 +4,4 @@ pydub
 groq
 audiofile
 moviepy
+moviepy.editor
