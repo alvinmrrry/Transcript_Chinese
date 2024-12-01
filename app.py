@@ -1,11 +1,11 @@
 import os
 import yt_dlp  # YouTube video downloader for audio extraction
+import requests  # For making API requests
 import streamlit as st
-from pydub import AudioSegment  # Library for audio manipulation
-from groq import Groq
 
-# Initialize Groq client
-client = Groq(api_key='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')
+# Hugging Face API URL and headers for authentication
+API_URL = "https://api-inference.huggingface.co/models/openai/whisper-large-v3-turbo"
+headers = {"Authorization": "Bearer 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"}  # Replace with your Hugging Face API key
 
 def extract_video_id(url):
     """Extract video ID from YouTube URL."""
@@ -23,7 +23,7 @@ def download_audio(url, video_id):
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-        
+
         # Find the downloaded audio file with the correct extension
         downloaded_file = f"{video_id}.{info_dict['ext']}"
         return downloaded_file
@@ -31,99 +31,44 @@ def download_audio(url, video_id):
         print(f"Error: {e}")
         return None
 
-def split_audio(audio_path, chunk_length_ms=180000):  # Default chunk size: 3 minutes (180,000 ms)
-    """Split audio into chunks."""
-    try:
-        audio = AudioSegment.from_file(audio_path)
-        chunks = []
-        for start_ms in range(0, len(audio), chunk_length_ms):
-            chunk = audio[start_ms:start_ms + chunk_length_ms]
-            chunk_filename = f"chunk_{start_ms // 1000}.mp3"
-            chunk.export(chunk_filename, format="mp3")
-            chunks.append(chunk_filename)
-        return chunks
-    except Exception as e:
-        print(f"Error splitting audio: {e}")
-        return []
-
-def transcribe_audio(audio_path):
-    """Transcribe audio using Whisper."""
-    try:
-        with open(audio_path, "rb") as f:
-            transcription = client.audio.transcriptions.create(
-                file=(audio_path, f.read()), model="whisper-large-v3-turbo")
-        return transcription.text
-    except Exception as e:
-        print(f"Error transcribing audio: {e}")
-        return None
-
-def translate_to_chinese(text_chunk):
-    """Translate transcript text to Chinese using Groq API."""
-    try:
-        completion = client.chat.completions.create(
-            model="llama-3.1-70b-versatile",
-            messages=[{
-                "role": "system",
-                "content": ("You are expert of translating English to Chinese. Please translate the text into Chinese "
-                            "and remember not to change the words or sequence of the original sentence.")
-            }, {
-                "role": "user",
-                "content": text_chunk
-            }],
-            temperature=0.1,
-            max_tokens=1024,
-            top_p=1,
-            stream=False,
-        )
-        
-        translated_text = completion.choices[0].message.content
-        return translated_text
-    except Exception as e:
-        print(f"Error during translation: {e}")
+def query(filename):
+    """Send audio file to Hugging Face Whisper API for transcription."""
+    with open(filename, "rb") as f:
+        data = f.read()
+    response = requests.post(API_URL, headers=headers, data=data)
+    
+    if response.status_code == 200:
+        return response.json()  # If successful, return the transcription result.
+    else:
+        print(f"Error: {response.status_code}, {response.text}")
         return None
 
 def process_video_transcript(url):
     """Main function to process video transcript."""
     video_id = extract_video_id(url)
-    if not video_id: raise ValueError("Invalid URL.")
+    if not video_id: 
+        raise ValueError("Invalid URL.")
 
     # Download audio in best available format
     audio_path = download_audio(url, video_id)
-    if not audio_path: raise ValueError("Audio download failed.")
+    if not audio_path: 
+        raise ValueError("Audio download failed.")
 
-    # Split the audio into 3-minute chunks
-    audio_chunks = split_audio(audio_path)
-
-    all_transcripts = []
-    for chunk in audio_chunks:
-        # Transcribe each audio chunk
-        transcript = transcribe_audio(chunk)
-        if transcript:
-            all_transcripts.append(transcript)
-        # Clean up audio chunk after processing
-        os.remove(chunk)
-
-    # Combine all transcripts
-    full_transcript = "\n".join(all_transcripts)
-    
-    # Translate the transcript to Chinese
-    translated_text = translate_to_chinese(full_transcript)
-    if translated_text:
-        # Save the translated transcript to a file
-        with open(f"{video_id}_transcript_chinese.txt", "w", encoding="utf-8") as f:
-            f.write(translated_text)
-        print("Transcript processing completed.")
-        return translated_text
+    # Transcribe the audio using Hugging Face Whisper API
+    transcript_result = query(audio_path)
+    if transcript_result and 'text' in transcript_result:
+        transcript = transcript_result['text']
+        print("Transcription completed.")
+        return transcript
     else:
-        print("Error in translation.")
-    
-    # Clean up original audio file
+        print("Error in transcription.")
+        return None
+
+    # Clean up audio file
     os.remove(audio_path)
 
-    return None
-
 # Streamlit UI
-st.title("YouTube Video Transcript & Translation")
+st.title("YouTube Video Transcript & Translation with Hugging Face Whisper")
 video_url = st.text_input("Enter YouTube Video URL:")
 
 if video_url:
@@ -134,9 +79,9 @@ if video_url:
         transcript = process_video_transcript(video_url)
 
         if transcript:
-            # Show the translated transcript in Streamlit
-            st.subheader("Chinese Transcript")
-            st.text_area("Transcript", transcript, height=400)
+            # Show the transcript in Streamlit
+            st.subheader("Transcript")
+            st.text_area("Transcript", transcript, height=1000)
         else:
             st.error("Failed to process video.")
 
