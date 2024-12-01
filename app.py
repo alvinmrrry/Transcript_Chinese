@@ -2,8 +2,8 @@ import os
 import yt_dlp  # YouTube video downloader for audio extraction
 import streamlit as st
 from groq import Groq
+from pydub import AudioSegment  # Audio splitting and processing
 import tempfile
-import wave
 
 # Initialize Groq client
 client = Groq(api_key='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')
@@ -34,24 +34,22 @@ def download_audio(url, video_id):
 
 def split_audio(audio_path, chunk_length_seconds=180):  # Default to 3 minutes
     """Split audio into chunks of a given length."""
-    import audiofile  # Using audiofile to handle splitting without ffmpeg
-    
     try:
-        # Open the audio file
-        audio = audiofile.read(audio_path)
-        total_length = audio.duration  # Duration in seconds
+        # Load audio file using pydub
+        audio = AudioSegment.from_file(audio_path)
+        total_length_ms = len(audio)
         
-        # Create chunks based on the duration
+        # Create chunks based on the duration (convert chunk length to milliseconds)
+        chunk_length_ms = chunk_length_seconds * 1000  # Convert to milliseconds
         chunks = []
-        for i in range(0, int(total_length), chunk_length_seconds):
-            chunk_file = f"{audio_path}_chunk_{i // chunk_length_seconds}.wav"
-            start = i
-            end = min(i + chunk_length_seconds, total_length)
-            chunk = audio[start:end]
-            chunk.save(chunk_file)  # Save chunk as a separate file
+        
+        for i in range(0, total_length_ms, chunk_length_ms):
+            chunk = audio[i:i + chunk_length_ms]
+            chunk_file = f"{audio_path}_chunk_{i // chunk_length_ms}.wav"
+            chunk.export(chunk_file, format="wav")
             chunks.append(chunk_file)
+        
         return chunks
-    
     except Exception as e:
         print(f"Error while splitting audio: {e}")
         return []
@@ -101,6 +99,11 @@ def process_video_transcript(url):
     # Download audio in best available format
     audio_path = download_audio(url, video_id)
     if not audio_path: raise ValueError("Audio download failed.")
+    
+    # Check if audio file exists before proceeding
+    if not os.path.exists(audio_path):
+        print(f"Audio file {audio_path} not found.")
+        return None
 
     # Split the audio into chunks of 3 minutes each
     audio_chunks = split_audio(audio_path)
