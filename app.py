@@ -111,7 +111,7 @@ if video_url:
         if transcript:
             # Show the translated transcript in Streamlit
             st.subheader("Chinese Transcript")
-            st.text_area("Transcript", transcript, height=400)
+            st.text_area("Transcript", transcript, height=4000)
         else:
             st.error("Failed to process video.")
 
