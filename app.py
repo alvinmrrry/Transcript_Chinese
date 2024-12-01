@@ -35,7 +35,7 @@ def transcribe_audio(audio_path):
     try:
         with open(audio_path, "rb") as f:
             transcription = client.audio.transcriptions.create(
-                file=(audio_path, f.read()), model="whisper-large-v3-turbo")
+                file=(audio_path, f.read()), model="whisper-large-v3")
         return transcription.text
     except Exception as e:
         print(f"Error transcribing audio: {e}")
