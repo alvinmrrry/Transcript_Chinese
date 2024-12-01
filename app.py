@@ -1,6 +1,7 @@
 import os
 import yt_dlp  # YouTube video downloader for audio extraction
 import streamlit as st
+from moviepy.editor import AudioFileClip  # For audio file processing
 from groq import Groq
 
 # Initialize Groq client
@@ -29,6 +30,27 @@ def download_audio(url, video_id):
     except Exception as e:
         print(f"Error: {e}")
         return None
+
+def split_audio(audio_path, chunk_length_sec=180):  # Default chunk size: 3 minutes (180 seconds)
+    """Split audio into chunks of specified length."""
+    try:
+        audio_clip = AudioFileClip(audio_path)
+        duration = int(audio_clip.duration)  # Total duration of the audio in seconds
+        chunks = []
+
+        # Create subclips of the audio, each of 3 minutes
+        for start_time in range(0, duration, chunk_length_sec):
+            end_time = min(start_time + chunk_length_sec, duration)
+            subclip = audio_clip.subclip(start_time, end_time)
+            chunk_filename = f"chunk_{start_time}.mp3"
+            subclip.write_audiofile(chunk_filename, codec='mp3')
+            chunks.append(chunk_filename)
+
+        audio_clip.close()
+        return chunks
+    except Exception as e:
+        print(f"Error splitting audio: {e}")
+        return []
 
 def transcribe_audio(audio_path):
     """Transcribe audio using Whisper."""
@@ -60,7 +82,6 @@ def translate_to_chinese(text_chunk):
             stream=False,
         )
         
-        # Correctly accessing the response attribute
         translated_text = completion.choices[0].message.content
         return translated_text
     except Exception as e:
@@ -76,22 +97,33 @@ def process_video_transcript(url):
     audio_path = download_audio(url, video_id)
     if not audio_path: raise ValueError("Audio download failed.")
 
-    # Transcribe the audio to text
-    transcript = transcribe_audio(audio_path)
-    if transcript:
-        translated_text = translate_to_chinese(transcript)  # Translate transcript to Chinese
-        if translated_text:
-            # Save the transcript to a file
-            with open(f"{video_id}_transcript_chinese.txt", "w", encoding="utf-8") as f:
-                f.write(translated_text)
-            print("Transcript processing completed.")
-            return translated_text
-        else:
-            print("Error in translation.")
-    else:
-        print("Error in transcription.")
+    # Split the audio into 3-minute chunks
+    audio_chunks = split_audio(audio_path)
 
-    # Clean up audio file
+    all_transcripts = []
+    for chunk in audio_chunks:
+        # Transcribe each audio chunk
+        transcript = transcribe_audio(chunk)
+        if transcript:
+            all_transcripts.append(transcript)
+        # Clean up audio chunk after processing
+        os.remove(chunk)
+
+    # Combine all transcripts
+    full_transcript = "\n".join(all_transcripts)
+    
+    # Translate the transcript to Chinese
+    translated_text = translate_to_chinese(full_transcript)
+    if translated_text:
+        # Save the translated transcript to a file
+        with open(f"{video_id}_transcript_chinese.txt", "w", encoding="utf-8") as f:
+            f.write(translated_text)
+        print("Transcript processing completed.")
+        return translated_text
+    else:
+        print("Error in translation.")
+    
+    # Clean up original audio file
     os.remove(audio_path)
 
     return None
