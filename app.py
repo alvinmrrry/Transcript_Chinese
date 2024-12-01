@@ -2,6 +2,8 @@ import os
 import yt_dlp  # YouTube video downloader for audio extraction
 import streamlit as st
 from groq import Groq
+import tempfile
+from pydub import AudioSegment
 
 # Initialize Groq client
 client = Groq(api_key='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')
