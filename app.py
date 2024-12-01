@@ -3,7 +3,7 @@ import yt_dlp  # YouTube video downloader for audio extraction
 import streamlit as st
 from groq import Groq
 import tempfile
-from pydub import AudioSegment
+import wave
 
 # Initialize Groq client
 client = Groq(api_key='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')
@@ -32,11 +32,29 @@ def download_audio(url, video_id):
         print(f"Error: {e}")
         return None
 
-def split_audio(audio_path, chunk_length_ms=180000):  # 180000 ms = 3 minutes
+def split_audio(audio_path, chunk_length_seconds=180):  # Default to 3 minutes
     """Split audio into chunks of a given length."""
-    # Since ffmpeg is not available, we will use yt-dlp and handle audio directly.
-    audio = AudioSegment.from_file(audio_path)
-    return [audio[i:i + chunk_length_ms] for i in range(0, len(audio), chunk_length_ms)]
+    import audiofile  # Using audiofile to handle splitting without ffmpeg
+    
+    try:
+        # Open the audio file
+        audio = audiofile.read(audio_path)
+        total_length = audio.duration  # Duration in seconds
+        
+        # Create chunks based on the duration
+        chunks = []
+        for i in range(0, int(total_length), chunk_length_seconds):
+            chunk_file = f"{audio_path}_chunk_{i // chunk_length_seconds}.wav"
+            start = i
+            end = min(i + chunk_length_seconds, total_length)
+            chunk = audio[start:end]
+            chunk.save(chunk_file)  # Save chunk as a separate file
+            chunks.append(chunk_file)
+        return chunks
+    
+    except Exception as e:
+        print(f"Error while splitting audio: {e}")
+        return []
 
 def transcribe_audio(audio_chunk):
     """Transcribe audio using Whisper."""
@@ -92,11 +110,8 @@ def process_video_transcript(url):
 
     # Process each chunk, transcribe, and translate
     for i, chunk in enumerate(audio_chunks):
-        chunk_file = f"chunk_{i}.mp3"
-        chunk.export(chunk_file, format="mp3")
-        
         # Transcribe each chunk
-        transcript = transcribe_audio(chunk_file)
+        transcript = transcribe_audio(chunk)
         if transcript:
             translated_text = translate_to_chinese(transcript)  # Translate transcript to Chinese
             if translated_text:
@@ -107,7 +122,7 @@ def process_video_transcript(url):
             print(f"Error in transcription for chunk {i}.")
         
         # Clean up chunk file
-        os.remove(chunk_file)
+        os.remove(chunk)
 
     # Clean up audio file
     os.remove(audio_path)
