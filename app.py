@@ -1,8 +1,8 @@
 import os
 from groq import Groq
-from pydub import AudioSegment
 import yt_dlp  # YouTube video downloader for audio extraction
 import streamlit as st
+from pydub import AudioSegment
 
 # Initialize Groq client
 client = Groq(api_key='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')
@@ -16,17 +16,18 @@ def extract_video_id(url):
 def download_audio(url, video_id):
     """Download audio from YouTube in a suitable format."""
     try:
-        # Download audio directly in mp3 or m4a format
+        # Download audio directly in best quality available
         ydl_opts = {
             'format': 'bestaudio/best',  # Download the best quality audio
-            'outtmpl': f'{video_id}.%(ext)s',  # Save with video ID
+            'outtmpl': f'{video_id}.%(ext)s',  # Save with video ID and the actual file extension
             'postprocessors': [],  # Avoid post-processing for conversion
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.extract_info(url, download=True)
+            info_dict = ydl.extract_info(url, download=True)
         
-        # Return the audio path based on what yt-dlp downloaded
-        return f"{video_id}.m4a"  # If .m4a is preferred, or use mp3 based on download
+        # Find the downloaded audio file with the correct extension
+        downloaded_file = f"{video_id}.{info_dict['ext']}"
+        return downloaded_file
     except Exception as e:
         print(f"Error: {e}")
         return None
@@ -82,7 +83,7 @@ def process_video_transcript(url):
     video_id = extract_video_id(url)
     if not video_id: raise ValueError("Invalid URL.")
 
-    # Download audio in .m4a or .mp3 format directly
+    # Download audio in best available format
     audio_path = download_audio(url, video_id)
     if not audio_path: raise ValueError("Audio download failed.")
 
