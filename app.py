@@ -1,5 +1,6 @@
 import os
 import yt_dlp  # YouTube video downloader for audio extraction
+import ffmpeg  # To manipulate and compress audio files
 import streamlit as st
 from groq import Groq
 
@@ -15,7 +16,7 @@ def extract_video_id(url):
 def download_audio(url, video_id):
     """Download audio from YouTube in lower quality."""
     try:
-        # Specify a lower quality audio format by choosing a lower bitrate audio or more compressed codec
+        # Download audio with yt-dlp, use lower quality settings
         ydl_opts = {
             'format': 'bestaudio[abr<=128]/mp4',  # Choose audio with bitrate <= 128 kbps, or mp4 audio
             'outtmpl': f'{video_id}.%(ext)s',  # Save with video ID and the actual file extension
@@ -26,18 +27,35 @@ def download_audio(url, video_id):
             'restrictfilenames': True,  # Prevent unusual characters in filenames
             'logtostderr': False,  # Disable logging to stderr (optional)
         }
-        
-        # Create a YouTubeDL instance and start the download
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-        
-        # Get the downloaded audio file with the appropriate extension
+
+        # Find the downloaded file
         downloaded_file = f"{video_id}.{info_dict['ext']}"
         return downloaded_file
     except Exception as e:
         print(f"Error: {e}")
         return None
 
+def compress_audio(input_file, output_file, target_size_mb=25):
+    """Compress audio file to a target size (in MB)."""
+    try:
+        # Estimate target bitrate based on desired size (in MB) and file duration
+        duration = ffmpeg.probe(input_file, v='error', select_streams='a:0', show_entries='format=duration')['format']['duration']
+        target_bitrate = (target_size_mb * 8 * 1024) / duration  # Calculate target bitrate in kbps
+
+        # Ensure the bitrate doesn't exceed 128kbps, as we want to avoid excessive quality loss
+        target_bitrate = min(target_bitrate, 128)
+
+        # Compress the audio using ffmpeg with the target bitrate
+        ffmpeg.input(input_file).output(output_file, audio_bitrate=f'{int(target_bitrate)}k').run()
+
+        # Return the compressed audio file path
+        return output_file
+    except Exception as e:
+        print(f"Error compressing audio: {e}")
+        return None
 
 def transcribe_audio(audio_path):
     """Transcribe audio using Whisper."""
@@ -79,38 +97,34 @@ def translate_to_chinese(text_chunk):
 def process_video_transcript(url, start_time=0, duration=300):
     """Main function to process video transcript and translate to Chinese."""
     video_id = extract_video_id(url)
-    if not video_id: 
-        raise ValueError("Invalid URL.")
+    if not video_id: raise ValueError("Invalid URL.")
 
-    # Download audio in normal quality (not best)
+    # Download audio in best available format (normal quality)
     audio_path = download_audio(url, video_id)
-    if not audio_path: 
-        raise ValueError("Audio download failed.")
+    if not audio_path: raise ValueError("Audio download failed.")
 
-    # Only transcribe a portion of the video (based on start_time and duration)
-    # You can modify this if necessary to extract specific segments.
-    try:
-        # Limit the audio to the desired segment using yt-dlp or other tools
-        # For now, we are transcribing the entire audio. In practice, you can trim or split the audio.
+    # Compress the audio to ensure it's under 25MB
+    compressed_audio_path = compress_audio(audio_path, f"{video_id}_compressed.mp3", target_size_mb=25)
+    if not compressed_audio_path: raise ValueError("Audio compression failed.")
 
-        transcript = transcribe_audio(audio_path)  # Transcribe the full audio or segment
-        if transcript:
-            translated_text = translate_to_chinese(transcript)  # Translate transcript to Chinese
-            if translated_text:
-                # Save the transcript to a file
-                with open(f"{video_id}_transcript_chinese.txt", "w", encoding="utf-8") as f:
-                    f.write(translated_text)
-                print("Transcript processing completed.")
-                return translated_text
-            else:
-                print("Error in translation.")
+    # Transcribe the compressed audio to text
+    transcript = transcribe_audio(compressed_audio_path)
+    if transcript:
+        translated_text = translate_to_chinese(transcript)  # Translate transcript to Chinese
+        if translated_text:
+            # Save the transcript to a file
+            with open(f"{video_id}_transcript_chinese.txt", "w", encoding="utf-8") as f:
+                f.write(translated_text)
+            print("Transcript processing completed.")
+            return translated_text
         else:
-            print("Error in transcription.")
-    except Exception as e:
-        print(f"Error processing video segment: {e}")
-    finally:
-        # Clean up audio file
-        os.remove(audio_path)
+            print("Error in translation.")
+    else:
+        print("Error in transcription.")
+
+    # Clean up audio files
+    os.remove(audio_path)
+    os.remove(compressed_audio_path)
 
     return None
 
