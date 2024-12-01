@@ -1,6 +1,7 @@
 import os
 import yt_dlp  # YouTube video downloader for audio extraction
 import streamlit as st
+from moviepy.editor import AudioFileClip
 from groq import Groq
 
 # Initialize Groq client
@@ -67,7 +68,27 @@ def translate_to_chinese(text_chunk):
         print(f"Error during translation: {e}")
         return None
 
-def process_video_transcript(url, start_time=0, duration=300):
+def segment_audio(audio_path, segment_length=180):
+    """Segment the audio into parts of segment_length (in seconds)."""
+    try:
+        audio_clip = AudioFileClip(audio_path)
+        duration = audio_clip.duration  # Duration of the full audio in seconds
+        segments = []
+
+        # Split the audio into segments of specified length
+        for start_time in range(0, int(duration), segment_length):
+            end_time = min(start_time + segment_length, duration)
+            segment = audio_clip.subclip(start_time, end_time)
+            segment_path = f"segment_{start_time}_{end_time}.mp3"
+            segment.write_audiofile(segment_path)
+            segments.append(segment_path)
+        
+        return segments
+    except Exception as e:
+        print(f"Error during audio segmentation: {e}")
+        return []
+
+def process_video_transcript(url):
     """Main function to process video transcript and translate to Chinese."""
     video_id = extract_video_id(url)
     if not video_id: raise ValueError("Invalid URL.")
@@ -76,30 +97,40 @@ def process_video_transcript(url, start_time=0, duration=300):
     audio_path = download_audio(url, video_id)
     if not audio_path: raise ValueError("Audio download failed.")
 
-    # Only transcribe a portion of the video (based on start_time and duration)
-    # You can modify this if necessary to extract specific segments.
     try:
-        # Limit the audio to the desired segment using yt-dlp or other tools
-        # For now, we are transcribing the entire audio. In practice, you can trim or split the audio.
+        # Segment the audio file into 3-minute parts (or a custom duration)
+        segments = segment_audio(audio_path, segment_length=180)  # Segment into 3-minute chunks
+        full_transcript = []
 
-        transcript = transcribe_audio(audio_path)  # Transcribe the full audio or segment
-        if transcript:
-            translated_text = translate_to_chinese(transcript)  # Translate transcript to Chinese
-            if translated_text:
-                # Save the transcript to a file
-                with open(f"{video_id}_transcript_chinese.txt", "w", encoding="utf-8") as f:
-                    f.write(translated_text)
-                print("Transcript processing completed.")
-                return translated_text
+        for segment in segments:
+            # Transcribe each segment
+            transcript = transcribe_audio(segment)
+            if transcript:
+                full_transcript.append(transcript)
             else:
-                print("Error in translation.")
+                print(f"Error transcribing segment {segment}")
+
+        # Join all segments into one transcript
+        full_transcript_text = "\n".join(full_transcript)
+        
+        # Translate the transcript to Chinese
+        translated_text = translate_to_chinese(full_transcript_text)
+        if translated_text:
+            # Save the translated transcript to a file
+            with open(f"{video_id}_transcript_chinese.txt", "w", encoding="utf-8") as f:
+                f.write(translated_text)
+            print("Transcript processing completed.")
+            return translated_text
         else:
-            print("Error in transcription.")
+            print("Error in translation.")
+        
     except Exception as e:
         print(f"Error processing video segment: {e}")
     finally:
-        # Clean up audio file
+        # Clean up audio files and segments
         os.remove(audio_path)
+        for segment in segments:
+            os.remove(segment)
 
     return None
 
@@ -112,7 +143,7 @@ st.write("Processing your video...")
 
 if video_url:
     try:
-        # Call the processing function (optional: pass start_time and duration for specific segments)
+        # Call the processing function
         transcript = process_video_transcript(video_url)
 
         if transcript:
