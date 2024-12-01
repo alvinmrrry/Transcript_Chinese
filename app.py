@@ -67,7 +67,7 @@ def translate_to_chinese(text_chunk):
         print(f"Error during translation: {e}")
         return None
 
-def process_video_transcript(url, start_time=0, duration=600):
+def process_video_transcript(url):
     """Main function to process video transcript and translate to Chinese."""
     video_id = extract_video_id(url)
     if not video_id: raise ValueError("Invalid URL.")
@@ -76,13 +76,9 @@ def process_video_transcript(url, start_time=0, duration=600):
     audio_path = download_audio(url, video_id)
     if not audio_path: raise ValueError("Audio download failed.")
 
-    # Only transcribe a portion of the video (based on start_time and duration)
-    # You can modify this if necessary to extract specific segments.
+    # Transcribe the full audio
     try:
-        # Limit the audio to the desired segment using yt-dlp or other tools
-        # For now, we are transcribing the entire audio. In practice, you can trim or split the audio.
-
-        transcript = transcribe_audio(audio_path)  # Transcribe the full audio or segment
+        transcript = transcribe_audio(audio_path)  # Transcribe the entire audio
         if transcript:
             translated_text = translate_to_chinese(transcript)  # Translate transcript to Chinese
             if translated_text:
@@ -96,7 +92,7 @@ def process_video_transcript(url, start_time=0, duration=600):
         else:
             print("Error in transcription.")
     except Exception as e:
-        print(f"Error processing video segment: {e}")
+        print(f"Error processing video: {e}")
     finally:
         # Clean up audio file
         os.remove(audio_path)
@@ -112,7 +108,7 @@ st.write("Processing your video...")
 
 if video_url:
     try:
-        # Call the processing function (optional: pass start_time and duration for specific segments)
+        # Call the processing function (this now processes the entire audio)
         transcript = process_video_transcript(video_url)
 
         if transcript:
